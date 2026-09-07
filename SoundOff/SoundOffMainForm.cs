@@ -5,7 +5,10 @@ using System.Data;
 using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
+using System.Runtime.InteropServices;
+using System.IO;
 using NAudio.Wave;
+using NAudio.CoreAudioApi;
 namespace SoundOff
 {
     public partial class SoundOffMainForm : Form
@@ -14,8 +17,170 @@ namespace SoundOff
         {
             InitializeComponent();
         }
-        private WaveOutEvent outputDevice;
+        private IWavePlayer outputDevice;
         private AudioFileReader audioFile;
+        private int selectedOutputIndex = 0; // 0 = default
+        private List<MMDevice> availableMmDevices = new List<MMDevice>();
+        private int waveOutDeviceNumber = -1; // -1 means use default
+
+        // Global hotkey constants/interop
+        private const int WM_HOTKEY = 0x0312;
+        private const uint MOD_NONE = 0x0000;
+        private const uint VK_NUMPAD0 = 0x60;
+        private const uint VK_NUMPAD1 = 0x61;
+        private const uint VK_NUMPAD2 = 0x62;
+        private const uint VK_NUMPAD3 = 0x63;
+        private const uint VK_NUMPAD4 = 0x64;
+        private const uint VK_NUMPAD5 = 0x65;
+        private const uint VK_NUMPAD6 = 0x66;
+        private const uint VK_NUMPAD7 = 0x67;
+        private const uint VK_NUMPAD8 = 0x68;
+        private const uint VK_NUMPAD9 = 0x69;
+
+        // IDs for registered hotkeys
+        private const int HOTKEY_ID_0 = 100;
+        private const int HOTKEY_ID_1 = 101;
+        private const int HOTKEY_ID_2 = 102;
+        private const int HOTKEY_ID_3 = 103;
+        private const int HOTKEY_ID_4 = 104;
+        private const int HOTKEY_ID_5 = 105;
+        private const int HOTKEY_ID_6 = 106;
+        private const int HOTKEY_ID_7 = 107;
+        private const int HOTKEY_ID_8 = 108;
+        private const int HOTKEY_ID_9 = 109;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        private void PlaySound(string filePath)
+        {
+            if (outputDevice != null)
+            {
+                outputDevice.Stop();
+                outputDevice.Dispose();
+                outputDevice = null;
+            }
+            if (audioFile != null)
+            {
+                audioFile.Dispose();
+                audioFile = null;
+            }
+            audioFile = new AudioFileReader(filePath);
+
+            // Create output device based on selectedOutputIndex
+            try
+            {
+                if (selectedOutputIndex == 0)
+                {
+                    outputDevice = new WaveOutEvent();
+                }
+                else if (availableMmDevices != null && selectedOutputIndex - 1 < availableMmDevices.Count && selectedOutputIndex - 1 >= 0)
+                {
+                    var dev = availableMmDevices[selectedOutputIndex - 1];
+                    outputDevice = new WasapiOut(dev, AudioClientShareMode.Shared, false, 200);
+                }
+                else
+                {
+                    // fallback to default
+                    outputDevice = new WaveOutEvent();
+                }
+            }
+            catch
+            {
+                outputDevice = new WaveOutEvent();
+            }
+
+            outputDevice.Init(audioFile);
+            // Apply current UI volume to the playback device
+            SetVolume();
+            outputDevice.Play();
+        }
+
+        private void StopSound()
+        {
+            if (outputDevice != null)
+            {
+                outputDevice.Stop();
+                outputDevice.Dispose();
+                outputDevice = null;
+            }
+            if (audioFile != null)
+            {
+                audioFile.Dispose();
+                audioFile = null;
+            }
+        }
+
+        // Read the current volume from the UI volume control (VolumeBar) and apply it
+        public void SetVolume()
+        {
+            float volume = 1.0f; // default full volume
+
+            try
+            {
+                if (VolumeBar != null)
+                {
+                    var t = VolumeBar.GetType();
+                    var prop = t.GetProperty("Volume") ?? t.GetProperty("Value");
+                    if (prop != null)
+                    {
+                        var raw = prop.GetValue(VolumeBar);
+                        if (raw is float f)
+                        {
+                            volume = f;
+                        }
+                        else if (raw is double d)
+                        {
+                            volume = (float)d;
+                        }
+                        else if (raw is int i)
+                        {
+                            volume = i;
+                        }
+                        else if (raw is decimal dec)
+                        {
+                            volume = (float)dec;
+                        }
+                        else if (raw != null)
+                        {
+                            float.TryParse(raw.ToString(), out volume);
+                        }
+
+                        // Normalize if value appears to be 0..100
+                        if (volume > 1.5f)
+                        {
+                            volume = MathF.Min(1f, volume / 100f);
+                        }
+                        volume = MathF.Max(0f, MathF.Min(1f, volume));
+                    }
+                }
+
+                // Apply to audio source if available
+                if (audioFile != null)
+                {
+                    audioFile.Volume = volume;
+                }
+
+                // Attempt to set volume on output device if it exposes Volume
+                if (outputDevice != null)
+                {
+                    var odType = outputDevice.GetType();
+                    var volProp = odType.GetProperty("Volume");
+                    if (volProp != null && volProp.CanWrite)
+                    {
+                        // WaveOutEvent.Volume expects float 0..1
+                        volProp.SetValue(outputDevice, volume);
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore any errors setting volume to keep UI responsive
+            }
+        }
 
         public void SoundOffMainForm_Load(object sender, EventArgs e)
         {
@@ -29,6 +194,218 @@ namespace SoundOff
             SoundFile7.Hide();
             SoundFile8.Hide();
             SoundFile9.Hide();
+            // Populate available output devices and select default (0)
+            PopulateOutputDevices();
+
+            // Register global hotkeys for numpad 0-9
+            // IDs chosen are in the HOTKEY_ID_* constants above
+            RegisterHotKey(this.Handle, HOTKEY_ID_0, MOD_NONE, VK_NUMPAD0);
+            RegisterHotKey(this.Handle, HOTKEY_ID_1, MOD_NONE, VK_NUMPAD1);
+            RegisterHotKey(this.Handle, HOTKEY_ID_2, MOD_NONE, VK_NUMPAD2);
+            RegisterHotKey(this.Handle, HOTKEY_ID_3, MOD_NONE, VK_NUMPAD3);
+            RegisterHotKey(this.Handle, HOTKEY_ID_4, MOD_NONE, VK_NUMPAD4);
+            RegisterHotKey(this.Handle, HOTKEY_ID_5, MOD_NONE, VK_NUMPAD5);
+            RegisterHotKey(this.Handle, HOTKEY_ID_6, MOD_NONE, VK_NUMPAD6);
+            RegisterHotKey(this.Handle, HOTKEY_ID_7, MOD_NONE, VK_NUMPAD7);
+            RegisterHotKey(this.Handle, HOTKEY_ID_8, MOD_NONE, VK_NUMPAD8);
+            RegisterHotKey(this.Handle, HOTKEY_ID_9, MOD_NONE, VK_NUMPAD9);
+
+            // Ensure hotkeys are unregistered when form closes
+            this.FormClosing += SoundOffMainForm_FormClosing;
+        }
+
+        private void PopulateOutputDevices()
+        {
+            try
+            {
+                SoundOutputBox.Items.Clear();
+                // Add default device as 0
+                SoundOutputBox.Items.Add("0: Default Device");
+
+                using (var enumerator = new MMDeviceEnumerator())
+                {
+                    var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+                    int idx = 1;
+                    foreach (var dev in devices)
+                    {
+                        SoundOutputBox.Items.Add($"{idx}: {dev.FriendlyName}");
+                        idx++;
+                    }
+                }
+            }
+            catch
+            {
+                // Fallback to WaveOut devices if MMDeviceEnumerator not available
+                try
+                {
+                    SoundOutputBox.Items.Clear();
+                    SoundOutputBox.Items.Add("0: Default Device");
+                    int count = WaveOut.DeviceCount;
+                    for (int i = 0; i < count; i++)
+                    {
+                        var caps = WaveOut.GetCapabilities(i);
+                        SoundOutputBox.Items.Add($"{i + 1}: {caps.ProductName}");
+                    }
+                }
+                catch
+                {
+                    // If enumeration fails, at least ensure default is present
+                    if (SoundOutputBox.Items.Count == 0)
+                        SoundOutputBox.Items.Add("0: Default Device");
+                }
+            }
+
+            // Ensure default selection is index 0
+            if (SoundOutputBox.Items.Count > 0)
+                SoundOutputBox.SelectedIndex = 0;
+        }
+
+        private void SoundOffMainForm_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            // Unregister hotkeys
+            UnregisterHotKey(this.Handle, HOTKEY_ID_0);
+            UnregisterHotKey(this.Handle, HOTKEY_ID_1);
+            UnregisterHotKey(this.Handle, HOTKEY_ID_2);
+            UnregisterHotKey(this.Handle, HOTKEY_ID_3);
+            UnregisterHotKey(this.Handle, HOTKEY_ID_4);
+            UnregisterHotKey(this.Handle, HOTKEY_ID_5);
+            UnregisterHotKey(this.Handle, HOTKEY_ID_6);
+            UnregisterHotKey(this.Handle, HOTKEY_ID_7);
+            UnregisterHotKey(this.Handle, HOTKEY_ID_8);
+            UnregisterHotKey(this.Handle, HOTKEY_ID_9);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_HOTKEY)
+            {
+                int id = m.WParam.ToInt32();
+                switch (id)
+                {
+                    case HOTKEY_ID_0:
+                        StopSound();
+                        break;
+                    case HOTKEY_ID_1:
+                        TryPlayFromLabel(SoundFile1);
+                        break;
+                    case HOTKEY_ID_2:
+                        TryPlayFromLabel(SoundFile2);
+                        break;
+                    case HOTKEY_ID_3:
+                        TryPlayFromLabel(SoundFile3);
+                        break;
+                    case HOTKEY_ID_4:
+                        TryPlayFromLabel(SoundFile4);
+                        break;
+                    case HOTKEY_ID_5:
+                        TryPlayFromLabel(SoundFile5);
+                        break;
+                    case HOTKEY_ID_6:
+                        TryPlayFromLabel(SoundFile6);
+                        break;
+                    case HOTKEY_ID_7:
+                        TryPlayFromLabel(SoundFile7);
+                        break;
+                    case HOTKEY_ID_8:
+                        TryPlayFromLabel(SoundFile8);
+                        break;
+                    case HOTKEY_ID_9:
+                        TryPlayFromLabel(SoundFile9);
+                        break;
+                }
+            }
+            base.WndProc(ref m);
+        }
+
+        private void TryPlayFromLabel(Label lbl)
+        {
+            if (lbl == null) return;
+            // Prefer full path stored in Tag; fall back to Text for compatibility
+            var path = lbl.Tag as string ?? lbl.Text;
+            if (string.IsNullOrWhiteSpace(path)) return;
+            if (File.Exists(path))
+            {
+                try
+                {
+                    PlaySound(path);
+                }
+                catch
+                {
+                    // swallow exceptions from playing; keep UI responsive
+                }
+            }
+        }
+
+        private void SetSoundOutput()
+        {
+            // This method can be used to set the output device if needed
+            // For now, we are using the default output device
+        }
+
+        private void OpenNewSoundFormButton_Click(object sender, EventArgs e)
+        {
+            SoundOffAddSoundForm AddSound = new SoundOffAddSoundForm();
+            AddSound.Show();
+        }
+
+        private void SetVolumeButton_Click(object sender, EventArgs e)
+        {
+            SetVolume();
+        }
+
+        private void SetOutputButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                int val = 0;
+                // Use SoundOutputNumeric as the control for selecting device index
+                if (SoundOutputNumeric != null)
+                    val = (int)SoundOutputNumeric.Value;
+
+                if (val < 0) val = 0;
+
+                // If we have MMDevice list and the value corresponds to one of them
+                if (val == 0)
+                {
+                    selectedOutputIndex = 0;
+                    waveOutDeviceNumber = -1;
+                }
+                else if (availableMmDevices != null && val - 1 < availableMmDevices.Count)
+                {
+                    selectedOutputIndex = val;
+                    waveOutDeviceNumber = -1;
+                }
+                else
+                {
+                    // Try to map to WaveOut device list (fallback)
+                    int waveCount = 0;
+                    try { waveCount = WaveOut.DeviceCount; } catch { waveCount = 0; }
+                    if (val - 1 >= 0 && val - 1 < waveCount)
+                    {
+                        selectedOutputIndex = val;
+                        waveOutDeviceNumber = val - 1;
+                    }
+                    else
+                    {
+                        // Invalid selection - revert to default
+                        selectedOutputIndex = 0;
+                        waveOutDeviceNumber = -1;
+                    }
+                }
+
+                // Update UI selection in the list if possible
+                if (SoundOutputBox != null && SoundOutputBox.Items.Count > 0)
+                {
+                    int sel = Math.Min(SoundOutputBox.Items.Count - 1, Math.Max(0, val));
+                    SoundOutputBox.SelectedIndex = sel;
+                }
+            }
+            catch
+            {
+                // ignore errors and keep default output
+                selectedOutputIndex = 0;
+                waveOutDeviceNumber = -1;
+            }
         }
     }
 }

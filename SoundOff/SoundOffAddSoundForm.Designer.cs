@@ -34,10 +34,10 @@
             SoundFileLocationText = new TextBox();
             LocateSoundFileLocationButton = new Button();
             ClearSoundFileLocationButton = new Button();
-            numericUpDown1 = new NumericUpDown();
+            SoundNumeric = new NumericUpDown();
             label3 = new Label();
-            button1 = new Button();
-            ((System.ComponentModel.ISupportInitialize)numericUpDown1).BeginInit();
+            SendSoundToMainButton = new Button();
+            ((System.ComponentModel.ISupportInitialize)SoundNumeric).BeginInit();
             SuspendLayout();
             // 
             // SoundLabelTextBox
@@ -83,6 +83,7 @@
             LocateSoundFileLocationButton.TabIndex = 4;
             LocateSoundFileLocationButton.Text = "Locate your Sound";
             LocateSoundFileLocationButton.UseVisualStyleBackColor = true;
+            LocateSoundFileLocationButton.Click += LocateSoundFileLocationButton_Click;
             // 
             // ClearSoundFileLocationButton
             // 
@@ -92,17 +93,18 @@
             ClearSoundFileLocationButton.TabIndex = 5;
             ClearSoundFileLocationButton.Text = "Clear Selected Sound";
             ClearSoundFileLocationButton.UseVisualStyleBackColor = true;
+            ClearSoundFileLocationButton.Click += ClearSoundFileLocationButton_Click;
             // 
-            // numericUpDown1
+            // SoundNumeric
             // 
-            numericUpDown1.Font = new Font("Segoe UI", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            numericUpDown1.Location = new Point(12, 210);
-            numericUpDown1.Maximum = new decimal(new int[] { 9, 0, 0, 0 });
-            numericUpDown1.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
-            numericUpDown1.Name = "numericUpDown1";
-            numericUpDown1.Size = new Size(47, 29);
-            numericUpDown1.TabIndex = 6;
-            numericUpDown1.Value = new decimal(new int[] { 1, 0, 0, 0 });
+            SoundNumeric.Font = new Font("Segoe UI", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            SoundNumeric.Location = new Point(12, 210);
+            SoundNumeric.Maximum = new decimal(new int[] { 9, 0, 0, 0 });
+            SoundNumeric.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            SoundNumeric.Name = "SoundNumeric";
+            SoundNumeric.Size = new Size(47, 29);
+            SoundNumeric.TabIndex = 6;
+            SoundNumeric.Value = new decimal(new int[] { 1, 0, 0, 0 });
             // 
             // label3
             // 
@@ -114,24 +116,25 @@
             label3.TabIndex = 7;
             label3.Text = "Set Sound Number (1-9)";
             // 
-            // button1
+            // SendSoundToMainButton
             // 
-            button1.Font = new Font("Segoe UI", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            button1.Location = new Point(12, 250);
-            button1.Name = "button1";
-            button1.Size = new Size(271, 43);
-            button1.TabIndex = 8;
-            button1.Text = "Set New Sound to SoundOff";
-            button1.UseVisualStyleBackColor = true;
+            SendSoundToMainButton.Font = new Font("Segoe UI", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            SendSoundToMainButton.Location = new Point(12, 250);
+            SendSoundToMainButton.Name = "SendSoundToMainButton";
+            SendSoundToMainButton.Size = new Size(271, 43);
+            SendSoundToMainButton.TabIndex = 8;
+            SendSoundToMainButton.Text = "Set New Sound to SoundOff";
+            SendSoundToMainButton.UseVisualStyleBackColor = true;
+            SendSoundToMainButton.Click += SendSoundToMainButton_Click;
             // 
             // SoundOffAddSoundForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(295, 305);
-            Controls.Add(button1);
+            Controls.Add(SendSoundToMainButton);
             Controls.Add(label3);
-            Controls.Add(numericUpDown1);
+            Controls.Add(SoundNumeric);
             Controls.Add(ClearSoundFileLocationButton);
             Controls.Add(LocateSoundFileLocationButton);
             Controls.Add(label2);
@@ -140,7 +143,7 @@
             Controls.Add(SoundLabelTextBox);
             Name = "SoundOffAddSoundForm";
             Text = "SoundOffAddSoundForm";
-            ((System.ComponentModel.ISupportInitialize)numericUpDown1).EndInit();
+            ((System.ComponentModel.ISupportInitialize)SoundNumeric).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -153,8 +156,8 @@
         private TextBox SoundFileLocationText;
         private Button LocateSoundFileLocationButton;
         private Button ClearSoundFileLocationButton;
-        private NumericUpDown numericUpDown1;
+        private NumericUpDown SoundNumeric;
         private Label label3;
-        private Button button1;
+        private Button SendSoundToMainButton;
     }
 }
