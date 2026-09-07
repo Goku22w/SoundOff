@@ -54,7 +54,7 @@ namespace SoundOff
             SoundFile2 = new Label();
             SoundFile1 = new Label();
             VolumeBar = new NAudio.Gui.VolumeSlider();
-            SetVolumeButton = new Button();
+            label1 = new Label();
             ((System.ComponentModel.ISupportInitialize)SoundOutputNumeric).BeginInit();
             SuspendLayout();
             // 
@@ -92,6 +92,7 @@ namespace SoundOff
             SaveSoundPresetButton.TabIndex = 3;
             SaveSoundPresetButton.Text = "Save Preset";
             SaveSoundPresetButton.UseVisualStyleBackColor = true;
+            SaveSoundPresetButton.Click += SaveSoundPresetButton_Click;
             // 
             // LoadSoundPresetButton
             // 
@@ -101,6 +102,7 @@ namespace SoundOff
             LoadSoundPresetButton.TabIndex = 4;
             LoadSoundPresetButton.Text = "Load Preset";
             LoadSoundPresetButton.UseVisualStyleBackColor = true;
+            LoadSoundPresetButton.Click += LoadSoundPresetButton_Click;
             // 
             // OpenNewSoundFormButton
             // 
@@ -314,28 +316,27 @@ namespace SoundOff
             // VolumeBar
             // 
             VolumeBar.Font = new Font("Segoe UI", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            VolumeBar.Location = new Point(13, 396);
+            VolumeBar.Location = new Point(12, 406);
             VolumeBar.Name = "VolumeBar";
             VolumeBar.Size = new Size(148, 32);
             VolumeBar.TabIndex = 26;
             // 
-            // SetVolumeButton
+            // label1
             // 
-            SetVolumeButton.Font = new Font("Segoe UI", 11.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
-            SetVolumeButton.Location = new Point(167, 394);
-            SetVolumeButton.Name = "SetVolumeButton";
-            SetVolumeButton.Size = new Size(98, 34);
-            SetVolumeButton.TabIndex = 27;
-            SetVolumeButton.Text = "Set Volume";
-            SetVolumeButton.UseVisualStyleBackColor = true;
-            SetVolumeButton.Click += SetVolumeButton_Click;
+            label1.AutoSize = true;
+            label1.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            label1.Location = new Point(27, 382);
+            label1.Name = "label1";
+            label1.Size = new Size(114, 21);
+            label1.TabIndex = 27;
+            label1.Text = "Volume Meter";
             // 
             // SoundOffMainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(674, 450);
-            Controls.Add(SetVolumeButton);
+            Controls.Add(label1);
             Controls.Add(SoundOutputBox);
             Controls.Add(VolumeBar);
             Controls.Add(SoundFile9);
@@ -361,6 +362,8 @@ namespace SoundOff
             Controls.Add(SaveSoundPresetButton);
             Controls.Add(SetOutputButton);
             Controls.Add(SoundOutputNumeric);
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            MaximizeBox = false;
             Name = "SoundOffMainForm";
             Text = "SoundOff";
             Load += SoundOffMainForm_Load;
@@ -396,6 +399,6 @@ namespace SoundOff
         private Label SoundFile2;
         private Label SoundFile1;
         private NAudio.Gui.VolumeSlider VolumeBar;
-        private Button SetVolumeButton;
+        private Label label1;
     }
 }

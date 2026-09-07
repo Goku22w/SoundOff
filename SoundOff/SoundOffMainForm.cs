@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.IO;
 using NAudio.Wave;
 using NAudio.CoreAudioApi;
+using System.Text.Json;
 namespace SoundOff
 {
     public partial class SoundOffMainForm : Form
@@ -21,7 +22,9 @@ namespace SoundOff
         private AudioFileReader audioFile;
         private int selectedOutputIndex = 0; // 0 = default
         private List<MMDevice> availableMmDevices = new List<MMDevice>();
-        private int waveOutDeviceNumber = -1; // -1 means use default
+
+        private record PresetEntry(int Number, string? Name, string? Path);
+        private record SoundPreset(List<PresetEntry> Entries, int SelectedOutput, float Volume);
 
         // Global hotkey constants/interop
         private const int WM_HOTKEY = 0x0312;
@@ -75,22 +78,28 @@ namespace SoundOff
             {
                 if (selectedOutputIndex == 0)
                 {
-                    outputDevice = new WaveOutEvent();
+                    // Use WaveOut (replacement for WaveOutEvent) for default device
+                    outputDevice = new WaveOut();
                 }
                 else if (availableMmDevices != null && selectedOutputIndex - 1 < availableMmDevices.Count && selectedOutputIndex - 1 >= 0)
                 {
                     var dev = availableMmDevices[selectedOutputIndex - 1];
-                    outputDevice = new WasapiOut(dev, AudioClientShareMode.Shared, false, 200);
+                    // Use WasapiPlayerBuilder for the selected MMDevice
+                    outputDevice = new WasapiPlayerBuilder()
+                        .WithDevice(dev)
+                        .WithLatency(200)
+                        .Build();
                 }
                 else
                 {
-                    // fallback to default
-                    outputDevice = new WaveOutEvent();
+                    // final fallback to default
+                    outputDevice = new WaveOut();
                 }
             }
             catch
             {
-                outputDevice = new WaveOutEvent();
+                // ensure we have a working player
+                try { outputDevice = new WaveOut(); } catch { outputDevice = null; }
             }
 
             outputDevice.Init(audioFile);
@@ -197,6 +206,9 @@ namespace SoundOff
             // Populate available output devices and select default (0)
             PopulateOutputDevices();
 
+            // Attempt to load default preset silently on startup
+            TryLoadDefaultPreset();
+
             // Register global hotkeys for numpad 0-9
             // IDs chosen are in the HOTKEY_ID_* constants above
             RegisterHotKey(this.Handle, HOTKEY_ID_0, MOD_NONE, VK_NUMPAD0);
@@ -214,6 +226,119 @@ namespace SoundOff
             this.FormClosing += SoundOffMainForm_FormClosing;
         }
 
+        private void ApplyPreset(SoundPreset preset)
+        {
+            if (preset == null) return;
+
+            // Apply entries
+            foreach (var entry in preset.Entries)
+            {
+                if (entry == null) continue;
+                int i = entry.Number;
+                if (i < 1 || i > 9) continue;
+
+                var soundLabelObj = this.Controls.Find($"Sound{i}", true);
+                if (soundLabelObj != null && soundLabelObj.Length > 0 && soundLabelObj[0] is Label sl)
+                {
+                    sl.Show();
+                    var displayName = entry.Name ?? string.Empty;
+                    if (displayName.StartsWith($"{i}:") || displayName.StartsWith($"{i} :"))
+                        sl.Text = displayName;
+                    else
+                        sl.Text = $"{i}: {displayName}".Trim();
+                }
+
+                var soundFileLabelObj = this.Controls.Find($"SoundFile{i}", true);
+                if (soundFileLabelObj != null && soundFileLabelObj.Length > 0 && soundFileLabelObj[0] is Label sfl)
+                {
+                    var path = entry.Path;
+                    if (!string.IsNullOrWhiteSpace(path))
+                    {
+                        sfl.Tag = path;
+                        try { sfl.Text = Path.GetFileName(path); } catch { sfl.Text = string.Empty; }
+                    }
+                    else
+                    {
+                        sfl.Tag = null;
+                        sfl.Text = string.Empty;
+                    }
+                    sfl.Hide();
+                }
+            }
+
+            // Apply selected output
+            try
+            {
+                selectedOutputIndex = preset.SelectedOutput;
+                if (SoundOutputNumeric != null)
+                {
+                    var max = SoundOutputNumeric.Maximum;
+                    var min = SoundOutputNumeric.Minimum;
+                    var val = Math.Min((decimal)selectedOutputIndex, max);
+                    val = Math.Max(val, min);
+                    SoundOutputNumeric.Value = val;
+                }
+
+                if (SoundOutputBox != null && SoundOutputBox.Items.Count > 0)
+                {
+                    int sel = Math.Min(SoundOutputBox.Items.Count - 1, Math.Max(0, selectedOutputIndex));
+                    SoundOutputBox.SelectedIndex = sel;
+                }
+            }
+            catch { }
+
+            // Apply volume
+            try
+            {
+                var vol = preset.Volume;
+                if (VolumeBar != null)
+                {
+                    var t = VolumeBar.GetType();
+                    var prop = t.GetProperty("Volume") ?? t.GetProperty("Value");
+                    if (prop != null && prop.CanWrite)
+                    {
+                        if (prop.PropertyType == typeof(float)) prop.SetValue(VolumeBar, vol);
+                        else if (prop.PropertyType == typeof(double)) prop.SetValue(VolumeBar, (double)vol);
+                        else if (prop.PropertyType == typeof(int)) prop.SetValue(VolumeBar, (int)(vol * 100));
+                        else if (prop.PropertyType == typeof(decimal)) prop.SetValue(VolumeBar, (decimal)vol);
+                    }
+                }
+
+                SetVolume();
+            }
+            catch { }
+        }
+
+        private void TryLoadDefaultPreset()
+        {
+            try
+            {
+                var presetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Presets Folder");
+                if (!Directory.Exists(presetsFolder)) return;
+
+                // Try DefaultP.json then DefaultP
+                var candidates = new[] { Path.Combine(presetsFolder, "DefaultP.json"), Path.Combine(presetsFolder, "DefaultP") };
+                foreach (var path in candidates)
+                {
+                    if (File.Exists(path))
+                    {
+                        try
+                        {
+                            var json = File.ReadAllText(path);
+                            var preset = JsonSerializer.Deserialize<SoundPreset>(json);
+                            if (preset != null)
+                            {
+                                ApplyPreset(preset);
+                            }
+                        }
+                        catch { }
+                        break;
+                    }
+                }
+            }
+            catch { }
+        }
+
         private void PopulateOutputDevices()
         {
             try
@@ -226,9 +351,11 @@ namespace SoundOff
                 {
                     var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
                     int idx = 1;
+                    availableMmDevices.Clear();
                     foreach (var dev in devices)
                     {
                         SoundOutputBox.Items.Add($"{idx}: {dev.FriendlyName}");
+                        availableMmDevices.Add(dev);
                         idx++;
                     }
                 }
@@ -240,12 +367,14 @@ namespace SoundOff
                 {
                     SoundOutputBox.Items.Clear();
                     SoundOutputBox.Items.Add("0: Default Device");
+                    availableMmDevices.Clear();
                     int count = WaveOut.DeviceCount;
                     for (int i = 0; i < count; i++)
                     {
                         var caps = WaveOut.GetCapabilities(i);
                         SoundOutputBox.Items.Add($"{i + 1}: {caps.ProductName}");
                     }
+                    // waveOutDeviceNumber will map to these indices minus 1
                 }
                 catch
                 {
@@ -335,24 +464,11 @@ namespace SoundOff
                 }
             }
         }
-
-        private void SetSoundOutput()
-        {
-            // This method can be used to set the output device if needed
-            // For now, we are using the default output device
-        }
-
         private void OpenNewSoundFormButton_Click(object sender, EventArgs e)
         {
             SoundOffAddSoundForm AddSound = new SoundOffAddSoundForm();
             AddSound.Show();
         }
-
-        private void SetVolumeButton_Click(object sender, EventArgs e)
-        {
-            SetVolume();
-        }
-
         private void SetOutputButton_Click(object sender, EventArgs e)
         {
             try
@@ -364,33 +480,19 @@ namespace SoundOff
 
                 if (val < 0) val = 0;
 
-                // If we have MMDevice list and the value corresponds to one of them
+                // If value corresponds to available MMDevice, select it; otherwise revert to default
                 if (val == 0)
                 {
                     selectedOutputIndex = 0;
-                    waveOutDeviceNumber = -1;
                 }
                 else if (availableMmDevices != null && val - 1 < availableMmDevices.Count)
                 {
                     selectedOutputIndex = val;
-                    waveOutDeviceNumber = -1;
                 }
                 else
                 {
-                    // Try to map to WaveOut device list (fallback)
-                    int waveCount = 0;
-                    try { waveCount = WaveOut.DeviceCount; } catch { waveCount = 0; }
-                    if (val - 1 >= 0 && val - 1 < waveCount)
-                    {
-                        selectedOutputIndex = val;
-                        waveOutDeviceNumber = val - 1;
-                    }
-                    else
-                    {
-                        // Invalid selection - revert to default
-                        selectedOutputIndex = 0;
-                        waveOutDeviceNumber = -1;
-                    }
+                    // Invalid selection - revert to default
+                    selectedOutputIndex = 0;
                 }
 
                 // Update UI selection in the list if possible
@@ -404,7 +506,206 @@ namespace SoundOff
             {
                 // ignore errors and keep default output
                 selectedOutputIndex = 0;
-                waveOutDeviceNumber = -1;
+            }
+        }
+
+        private void SaveSoundPresetButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                var presetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Presets Folder");
+                if (!Directory.Exists(presetsFolder))
+                    Directory.CreateDirectory(presetsFolder);
+
+                var entries = new List<PresetEntry>();
+                for (int i = 1; i <= 9; i++)
+                {
+                    string? name = null;
+                    string? path = null;
+                    var soundLabel = this.Controls.Find($"Sound{i}", true);
+                    if (soundLabel != null && soundLabel.Length > 0 && soundLabel[0] is Label sl)
+                    {
+                        name = sl.Text;
+                    }
+                    var soundFileLabel = this.Controls.Find($"SoundFile{i}", true);
+                    if (soundFileLabel != null && soundFileLabel.Length > 0 && soundFileLabel[0] is Label sfl)
+                    {
+                        path = sfl.Tag as string ?? sfl.Text;
+                    }
+                    entries.Add(new PresetEntry(i, name, path));
+                }
+
+                // Attempt to read current volume
+                float volume = 1.0f;
+                try
+                {
+                    if (VolumeBar != null)
+                    {
+                        var t = VolumeBar.GetType();
+                        var prop = t.GetProperty("Volume") ?? t.GetProperty("Value");
+                        if (prop != null)
+                        {
+                            var raw = prop.GetValue(VolumeBar);
+                            if (raw is float f) volume = f;
+                            else if (raw is double d) volume = (float)d;
+                            else if (raw is int iv) volume = iv;
+                            else if (raw != null) float.TryParse(raw.ToString(), out volume);
+                            if (volume > 1.5f) volume = MathF.Min(1f, volume / 100f);
+                            volume = MathF.Max(0f, MathF.Min(1f, volume));
+                        }
+                    }
+                }
+                catch { }
+
+                var preset = new SoundPreset(entries, selectedOutputIndex, volume);
+                var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+                var json = JsonSerializer.Serialize(preset, jsonOptions);
+
+                using (var sfd = new SaveFileDialog())
+                {
+                    sfd.InitialDirectory = presetsFolder;
+                    sfd.Filter = "JSON Preset|*.json|All Files|*.*";
+                    sfd.Title = "Save preset as...";
+                    sfd.FileName = "preset.json";
+                    if (sfd.ShowDialog(this) != DialogResult.OK) return;
+
+                    var chosen = sfd.FileName;
+                    try
+                    {
+                        // Ensure .json extension
+                        if (Path.GetExtension(chosen)?.ToLowerInvariant() != ".json")
+                            chosen = chosen + ".json";
+                        File.WriteAllText(chosen, json);
+                        MessageBox.Show(this, $"Saved preset to: {chosen}", "Preset Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(this, $"Failed to save preset: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Failed to save preset: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void LoadSoundPresetButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                var presetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Presets Folder");
+                if (!Directory.Exists(presetsFolder))
+                {
+                    MessageBox.Show(this, "No Presets Folder found.", "Load Preset", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                using (var ofd = new OpenFileDialog())
+                {
+                    ofd.InitialDirectory = presetsFolder;
+                    ofd.Filter = "JSON Preset|*.json|All Files|*.*";
+                    ofd.Title = "Select a preset to load";
+                    if (ofd.ShowDialog(this) != DialogResult.OK) return;
+
+                    var json = File.ReadAllText(ofd.FileName);
+                    var preset = JsonSerializer.Deserialize<SoundPreset>(json);
+                    if (preset == null)
+                    {
+                        MessageBox.Show(this, "Failed to parse preset file.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    // Apply entries
+                    foreach (var entry in preset.Entries)
+                    {
+                        if (entry == null) continue;
+                        int i = entry.Number;
+                        if (i < 1 || i > 9) continue;
+
+                        var soundLabelObj = this.Controls.Find($"Sound{i}", true);
+                        if (soundLabelObj != null && soundLabelObj.Length > 0 && soundLabelObj[0] is Label sl)
+                        {
+                            sl.Show();
+                            // store display name without duplicating numeric prefix
+                            var displayName = entry.Name ?? string.Empty;
+                            // If displayName already contains a colon prefix, avoid adding another
+                            if (displayName.StartsWith($"{i}:") || displayName.StartsWith($"{i} :"))
+                                sl.Text = displayName;
+                            else
+                                sl.Text = $"{i}: {displayName}".Trim();
+                        }
+
+                        var soundFileLabelObj = this.Controls.Find($"SoundFile{i}", true);
+                        if (soundFileLabelObj != null && soundFileLabelObj.Length > 0 && soundFileLabelObj[0] is Label sfl)
+                        {
+                            // store full path in Tag, keep visible text as filename, and hide the label
+                            var path = entry.Path;
+                            if (!string.IsNullOrWhiteSpace(path))
+                            {
+                                sfl.Tag = path;
+                                try { sfl.Text = Path.GetFileName(path); } catch { sfl.Text = string.Empty; }
+                            }
+                            else
+                            {
+                                sfl.Tag = null;
+                                sfl.Text = string.Empty;
+                            }
+                            sfl.Hide();
+                        }
+                    }
+
+                    // Apply selected output
+                    try
+                    {
+                        selectedOutputIndex = preset.SelectedOutput;
+                        if (SoundOutputNumeric != null)
+                        {
+                            var max = SoundOutputNumeric.Maximum;
+                            var min = SoundOutputNumeric.Minimum;
+                            var val = Math.Min((decimal)selectedOutputIndex, max);
+                            val = Math.Max(val, min);
+                            SoundOutputNumeric.Value = val;
+                        }
+
+                        // Update list selection
+                        if (SoundOutputBox != null && SoundOutputBox.Items.Count > 0)
+                        {
+                            int sel = Math.Min(SoundOutputBox.Items.Count - 1, Math.Max(0, selectedOutputIndex));
+                            SoundOutputBox.SelectedIndex = sel;
+                        }
+                    }
+                    catch { }
+
+                    // Apply volume
+                    try
+                    {
+                        var vol = preset.Volume;
+                        if (VolumeBar != null)
+                        {
+                            var t = VolumeBar.GetType();
+                            var prop = t.GetProperty("Volume") ?? t.GetProperty("Value");
+                            if (prop != null && prop.CanWrite)
+                            {
+                                // try to set the property in a compatible type
+                                if (prop.PropertyType == typeof(float)) prop.SetValue(VolumeBar, vol);
+                                else if (prop.PropertyType == typeof(double)) prop.SetValue(VolumeBar, (double)vol);
+                                else if (prop.PropertyType == typeof(int)) prop.SetValue(VolumeBar, (int)(vol * 100));
+                                else if (prop.PropertyType == typeof(decimal)) prop.SetValue(VolumeBar, (decimal)vol);
+                            }
+                        }
+
+                        // Also apply to current audio if any
+                        SetVolume();
+                    }
+                    catch { }
+
+                    MessageBox.Show(this, "Preset loaded.", "Load Preset", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Failed to load preset: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
