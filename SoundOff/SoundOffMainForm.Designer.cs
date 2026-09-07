@@ -53,7 +53,10 @@ namespace SoundOff
             SoundFile4 = new Label();
             SoundFile2 = new Label();
             SoundFile1 = new Label();
+            trackWave = new TrackBar();
+            label1 = new Label();
             ((System.ComponentModel.ISupportInitialize)numericUpDown1).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)trackWave).BeginInit();
             SuspendLayout();
             // 
             // SoundOutputBox
@@ -289,11 +292,31 @@ namespace SoundOff
             SoundFile1.TabIndex = 15;
             SoundFile1.Text = "label1";
             // 
+            // trackWave
+            // 
+            trackWave.LargeChange = 1;
+            trackWave.Location = new Point(12, 393);
+            trackWave.Name = "trackWave";
+            trackWave.Size = new Size(149, 45);
+            trackWave.TabIndex = 24;
+            // 
+            // label1
+            // 
+            label1.AutoSize = true;
+            label1.Font = new Font("Segoe UI", 14.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
+            label1.Location = new Point(167, 393);
+            label1.Name = "label1";
+            label1.Size = new Size(76, 25);
+            label1.TabIndex = 25;
+            label1.Text = "Volume";
+            // 
             // SoundOffMainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(674, 450);
+            Controls.Add(label1);
+            Controls.Add(trackWave);
             Controls.Add(SoundFile9);
             Controls.Add(SoundFile5);
             Controls.Add(SoundFile6);
@@ -320,8 +343,9 @@ namespace SoundOff
             Controls.Add(SoundOutputBox);
             Name = "SoundOffMainForm";
             Text = "SoundOff";
-            this.Load += SoundOffMainForm_Load;
+            Load += SoundOffMainForm_Load;
             ((System.ComponentModel.ISupportInitialize)numericUpDown1).EndInit();
+            ((System.ComponentModel.ISupportInitialize)trackWave).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -352,5 +376,7 @@ namespace SoundOff
         private Label SoundFile4;
         private Label SoundFile2;
         private Label SoundFile1;
+        private TrackBar trackWave;
+        private Label label1;
     }
 }

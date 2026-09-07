@@ -5,6 +5,7 @@ using System.Data;
 using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
+using NAudio.Wave;
 namespace SoundOff
 {
     public partial class SoundOffMainForm : Form
@@ -13,6 +14,8 @@ namespace SoundOff
         {
             InitializeComponent();
         }
+        private WaveOutEvent outputDevice;
+        private AudioFileReader audioFile;
 
         public void SoundOffMainForm_Load(object sender, EventArgs e)
         {
