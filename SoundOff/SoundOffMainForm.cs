@@ -209,6 +209,13 @@ namespace SoundOff
             // Attempt to load default preset silently on startup
             TryLoadDefaultPreset();
 
+            // Wire double-click on output list to copy value into numeric selector
+            if (SoundOutputBox != null)
+            {
+                SoundOutputBox.DoubleClick -= SoundOutputBox_DoubleClick;
+                SoundOutputBox.DoubleClick += SoundOutputBox_DoubleClick;
+            }
+
             // Register global hotkeys for numpad 0-9
             // IDs chosen are in the HOTKEY_ID_* constants above
             RegisterHotKey(this.Handle, HOTKEY_ID_0, MOD_NONE, VK_NUMPAD0);
@@ -224,6 +231,40 @@ namespace SoundOff
 
             // Ensure hotkeys are unregistered when form closes
             this.FormClosing += SoundOffMainForm_FormClosing;
+        }
+
+        private void SoundOutputBox_DoubleClick(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (SoundOutputBox == null || SoundOutputBox.SelectedItem == null) return;
+                var item = SoundOutputBox.SelectedItem.ToString() ?? string.Empty;
+                // Expect format like "N: Name" where N is numeric
+                var parts = item.Split(':');
+                int val = 0;
+                if (parts.Length > 0 && int.TryParse(parts[0].Trim(), out var parsed))
+                {
+                    val = parsed;
+                }
+                else
+                {
+                    // fallback to SelectedIndex
+                    val = SoundOutputBox.SelectedIndex;
+                }
+
+                if (SoundOutputNumeric != null)
+                {
+                    var min = SoundOutputNumeric.Minimum;
+                    var max = SoundOutputNumeric.Maximum;
+                    var toSet = Math.Min((decimal)val, max);
+                    toSet = Math.Max(toSet, min);
+                    SoundOutputNumeric.Value = toSet;
+                }
+            }
+            catch
+            {
+                // ignore errors
+            }
         }
 
         private void ApplyPreset(SoundPreset preset)

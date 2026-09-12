@@ -141,6 +141,8 @@
             Controls.Add(SoundFileLocationText);
             Controls.Add(label1);
             Controls.Add(SoundLabelTextBox);
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            MaximizeBox = false;
             Name = "SoundOffAddSoundForm";
             Text = "SoundOffAddSoundForm";
             ((System.ComponentModel.ISupportInitialize)SoundNumeric).EndInit();
